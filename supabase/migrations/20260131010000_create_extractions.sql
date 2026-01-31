@@ -1,19 +1,27 @@
 -- Enums for extraction fields
-CREATE TYPE sector AS ENUM (
-    'healthcare',
-    'finance',
-    'tech',
-    'energy',
-    'manufacturing',
-    'retail',
-    'other'
-);
+DO $$ BEGIN
+    CREATE TYPE sector AS ENUM (
+        'healthcare',
+        'finance',
+        'tech',
+        'energy',
+        'manufacturing',
+        'retail',
+        'other'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
-CREATE TYPE relevance AS ENUM (
-    'high',
-    'medium',
-    'low'
-);
+DO $$ BEGIN
+    CREATE TYPE relevance AS ENUM (
+        'high',
+        'medium',
+        'low'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- Firecrawl extraction results
 CREATE TABLE IF NOT EXISTS extractions (
