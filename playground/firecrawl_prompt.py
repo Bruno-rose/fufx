@@ -1,4 +1,7 @@
 # pip install firecrawl-py
+# uv run python playground/firecrawl_prompt.py
+# uv run python playground/firecrawl_prompt.py --custom
+
 
 from enum import Enum
 import os
@@ -40,6 +43,10 @@ class StructuredOutput(BaseModel):
     relevance: Relevance
     summary: str
 
+
+class SummaryOutput(BaseModel):
+    summary: str
+
 def scrape_govinfo_example():
     firecrawl = get_firecrawl_client()
     # Scrape a website:
@@ -50,8 +57,30 @@ def scrape_govinfo_example():
             {
                 "type": "json",
                 "schema": StructuredOutput.model_json_schema(),
-                "prompt": """Analyze the provided document to extract high-value business insights, identifying all mentioned companies, stakeholders, and specific regulatory or market-driven deadlines. Provide a structured summary using bold bullet points that details main impacts on models, rephrase so that the summary is understandable by business audience. Make sure to rephrase the title to make it informative for business audience (product, service, regulation change, etc.). Make sure that the companies mentioned are companies and not countries/public organizations.
-      """,
+                "prompt": """Analyze the provided document to extract key business insights, including:
+- All mentioned companies, stakeholders, and relevant regulatory or market deadlines.
+- A clear, structured summary with bold bullet points outlining the main new policies, grouped by sector.
+Rephrase the summary so it's easily understandable for a business audience. Also, rephrase the title to clearly reflect the nature of the document (e.g., product update, service change, regulation shift).""",
+            }
+        ],
+    )
+    elapsed = time.perf_counter() - start_time
+    print(doc)
+    print(f"Request took {elapsed:.2f}s")
+
+
+CUSTOM_PROMPT = """My company sells drugs and is interested in top insights. Summarize this document, explaining what the impact is for my business."""
+
+def scrape_custom_example():
+    firecrawl = get_firecrawl_client()
+    start_time = time.perf_counter()
+    doc = firecrawl.scrape(
+        "https://www.govinfo.gov/content/pkg/FR-2026-01-29/html/2026-01817.htm",
+        formats=[
+            {
+                "type": "json",
+                "schema": SummaryOutput.model_json_schema(),
+                "prompt": CUSTOM_PROMPT,
             }
         ],
     )
@@ -61,4 +90,17 @@ def scrape_govinfo_example():
 
 
 if __name__ == "__main__":
-    scrape_govinfo_example()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run Firecrawl scrape example")
+    parser.add_argument(
+        "--custom",
+        action="store_true",
+        help="Use the custom prompt + summary-only schema",
+    )
+    args = parser.parse_args()
+
+    if args.custom:
+        scrape_custom_example()
+    else:
+        scrape_govinfo_example()
