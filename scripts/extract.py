@@ -10,6 +10,7 @@ Usage:
     uv run python scripts/extract.py --date 2026-01-30
 """
 
+import json
 import os
 import logging
 from datetime import datetime, timedelta
@@ -19,6 +20,23 @@ from dotenv import load_dotenv
 from firecrawl import Firecrawl
 from pydantic import BaseModel
 from supabase import create_client, Client
+
+
+def to_serializable(obj):
+    """Convert firecrawl objects to JSON-serializable dicts."""
+    if obj is None:
+        return None
+    if isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, (list, tuple)):
+        return [to_serializable(i) for i in obj]
+    if isinstance(obj, dict):
+        return {k: to_serializable(v) for k, v in obj.items()}
+    if hasattr(obj, "__dict__"):
+        return {k: to_serializable(v) for k, v in obj.__dict__.items()}
+    # Fallback: try str
+    return str(obj)
+
 
 load_dotenv()
 
@@ -266,9 +284,7 @@ def extract_documents(
                             if isinstance(json_data, dict)
                             else getattr(json_data, "summary", None)
                         ),
-                        "raw_json": (
-                            item.__dict__ if hasattr(item, "__dict__") else item
-                        ),
+                        "raw_json": to_serializable(item),
                         "extracted_at": datetime.now().isoformat(),
                     }
                 )
