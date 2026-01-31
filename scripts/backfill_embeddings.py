@@ -1,29 +1,56 @@
-"""Backfill embeddings for existing extractions that don't have them."""
+"""Backfill embeddings by triggering updates on extractions without them.
+
+Since gte-small runs in the edge function, we just need to trigger an update
+on each row to invoke the webhook.
+"""
+
 import os
 import logging
+import httpx
+from dotenv import load_dotenv
 from supabase import create_client
-from openai import OpenAI
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+SUPABASE_KEY = os.environ["SUPABASE_KEY"]
+SUPABASE_ANON_KEY = os.environ["SUPABASE_ANON_KEY"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-openai = OpenAI(api_key=OPENAI_API_KEY)
 
-BATCH_SIZE = 100
+BATCH_SIZE = 50
 
 
-def get_embedding(text: str) -> list[float]:
-    """Generate embedding using OpenAI."""
-    response = openai.embeddings.create(
-        model="text-embedding-3-small",
-        input=text,
-    )
-    return response.data[0].embedding
+def call_edge_function(extraction_id: int, summary: str) -> bool:
+    """Call the generate-embedding edge function directly."""
+    url = f"{SUPABASE_URL}/functions/v1/generate-embedding"
+    headers = {
+        "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "type": "UPDATE",
+        "table": "extractions",
+        "record": {
+            "id": extraction_id,
+            "summary": summary,
+            "summary_embedding": None,
+        },
+        "old_record": None,
+    }
+
+    try:
+        response = httpx.post(url, json=payload, headers=headers, timeout=30)
+        response.raise_for_status()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to call edge function for {extraction_id}: {e}")
+        return False
 
 
 def backfill():
@@ -44,15 +71,9 @@ def backfill():
 
     count = 0
     for row in result.data:
-        try:
-            embedding = get_embedding(row["summary"])
-            supabase.table("extractions").update(
-                {"summary_embedding": embedding}
-            ).eq("id", row["id"]).execute()
+        if call_edge_function(row["id"], row["summary"]):
             count += 1
             logger.info(f"Generated embedding for extraction {row['id']}")
-        except Exception as e:
-            logger.error(f"Failed to generate embedding for {row['id']}: {e}")
 
     return count
 
@@ -65,4 +86,3 @@ if __name__ == "__main__":
         if processed < BATCH_SIZE:
             break
     logger.info(f"Done. Total processed: {total}")
-
