@@ -29,6 +29,7 @@ class Sector(Enum):
     ENVIRONMENT = "environment"
     ENERGY = "energy"
     MANUFACTURING = "manufacturing"
+    RETAIL = "retail"
     OTHER = "other"
 
 class Relevance(Enum):
@@ -69,7 +70,9 @@ Rephrase the summary so it's easily understandable for a business audience. Also
     print(f"Request took {elapsed:.2f}s")
 
 
-CUSTOM_PROMPT = """My company sells drugs and is interested in top insights. Summarize this document, explaining what the impact is for my business."""
+COMPANY_TYPE="pharmaceutical"
+KEYWORDS="drugs, healthcare, pharmaceutical"
+CUSTOM_PROMPT = f"""My company operates in the {COMPANY_TYPE} sector and seeks key business insights. Summarize this document, highlighting the most relevant information and explaining its potential impact on my business. Focus on {KEYWORDS} and provide actionable takeaways for decision-making."""
 
 def scrape_custom_example():
     firecrawl = get_firecrawl_client()

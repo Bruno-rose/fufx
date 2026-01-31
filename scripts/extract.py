@@ -77,7 +77,10 @@ class StructuredOutput(BaseModel):
     summary: str
 
 
-EXTRACTION_PROMPT = """Analyze the provided document to extract high-value business insights, identifying all mentioned companies, stakeholders, and specific regulatory or market-driven deadlines. Provide a structured summary using bold bullet points that details main impacts on models, rephrase so that the summary is understandable by business audience. Make sure to rephrase the title to make it informative for business audience (product, service, regulation change, etc.). Make sure that the companies mentioned are companies and not countries/public organizations."""
+EXTRACTION_PROMPT = """Analyze the provided document to extract key business insights, including:
+- All mentioned companies, stakeholders, and relevant regulatory or market deadlines.
+- A clear, structured summary with bold bullet points outlining the main new policies, grouped by sector.
+Rephrase the summary so it's easily understandable for a business audience. Also, rephrase the title to clearly reflect the nature of the document (e.g., product update, service change, regulation shift)."""
 
 
 def get_supabase_client() -> Client:
