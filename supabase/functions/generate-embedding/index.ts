@@ -1,9 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+// Use Supabase's built-in gte-small model (384 dims)
+const session = new Supabase.ai.Session("gte-small");
 
 interface ExtractionPayload {
   type: "INSERT" | "UPDATE";
@@ -18,28 +20,6 @@ interface ExtractionPayload {
     summary: string;
     summary_embedding: number[] | null;
   } | null;
-}
-
-async function generateEmbedding(text: string): Promise<number[]> {
-  const response = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "text-embedding-3-small",
-      input: text,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`OpenAI API error: ${error}`);
-  }
-
-  const data = await response.json();
-  return data.data[0].embedding;
 }
 
 Deno.serve(async (req) => {
@@ -70,15 +50,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Generate embedding
-    const embedding = await generateEmbedding(record.summary);
+    // Generate embedding using built-in gte-small
+    const embedding = await session.run(record.summary, {
+      mean_pool: true,
+      normalize: true,
+    });
 
     // Update the record with the embedding
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const { error } = await supabase
       .from("extractions")
-      .update({ summary_embedding: embedding })
+      .update({ summary_embedding: JSON.stringify(embedding) })
       .eq("id", record.id);
 
     if (error) {
@@ -97,13 +80,9 @@ Deno.serve(async (req) => {
     );
   } catch (error) {
     console.error("Error:", error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 });
-
