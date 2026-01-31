@@ -14,6 +14,7 @@ import json
 import os
 import logging
 import time
+from multiprocessing import Process
 from datetime import datetime, timedelta
 from enum import Enum
 
@@ -48,6 +49,7 @@ logger = logging.getLogger(__name__)
 
 # Firecrawl limits
 BATCH_SIZE = 50  # firecrawl batch limit per request
+DB_BATCH_SIZE = 1  # write results in small batches
 
 
 class Sector(str, Enum):
@@ -73,7 +75,7 @@ class StructuredOutput(BaseModel):
     title: str
     companies_mentioned: list[str]
     sector: list[Sector]
-    relevance: list[Relevance]
+    relevance: Relevance
     summary: str
 
 
@@ -184,28 +186,13 @@ def save_extractions(
     return len(extractions)
 
 
-def extract_documents(
-    limit: int | None = None,
-    date: str | None = None,
-    include_processed: bool = False,
+def process_documents(
+    docs: list[dict],
+    worker_id: int | None = None,
+    db_batch_size: int = DB_BATCH_SIZE,
 ) -> int:
-    """Main extraction pipeline."""
     supabase = get_supabase_client()
     firecrawl = get_firecrawl_client()
-
-    # Fetch unprocessed docs
-    docs = fetch_unprocessed_documents(
-        supabase,
-        limit=limit,
-        date=date,
-        include_processed=include_processed,
-    )
-    if not docs:
-        logger.info("No unprocessed documents found")
-        return 0
-
-    logger.info(f"Found {len(docs)} unprocessed documents")
-
     total_extracted = 0
 
     # Process in batches
@@ -228,7 +215,7 @@ def extract_documents(
                 f"Batch status: {result.status}, total: {getattr(result, 'total', '?')}, completed: {getattr(result, 'completed', '?')}"
             )
 
-            extractions = []
+            extractions: list[dict] = []
             for idx, item in enumerate(result.data):
                 # Debug: log the item structure
                 logger.debug(f"Item {idx} type: {type(item)}")
@@ -267,6 +254,16 @@ def extract_documents(
                 doc = url_to_doc[url]
                 json_data = getattr(item, "json", {}) or {}
 
+                raw_relevance = (
+                    json_data.get("relevance")
+                    if isinstance(json_data, dict)
+                    else getattr(json_data, "relevance", None)
+                )
+                if isinstance(raw_relevance, list):
+                    raw_relevance = raw_relevance[0] if raw_relevance else None
+                if hasattr(raw_relevance, "value"):
+                    raw_relevance = raw_relevance.value
+
                 extractions.append(
                     {
                         "document_id": doc["id"],
@@ -288,14 +285,7 @@ def extract_documents(
                                 else getattr(json_data, "sector", [])
                             )
                         ],
-                        "relevance": [
-                            r.value if hasattr(r, "value") else r
-                            for r in (
-                                json_data.get("relevance", [])
-                                if isinstance(json_data, dict)
-                                else getattr(json_data, "relevance", [])
-                            )
-                        ],
+                        "relevance": raw_relevance,
                         "summary": (
                             json_data.get("summary")
                             if isinstance(json_data, dict)
@@ -306,15 +296,69 @@ def extract_documents(
                     }
                 )
 
-            saved = save_extractions(supabase, extractions)
-            total_extracted += saved
-            logger.info(f"Saved {saved} extractions (batch {i // BATCH_SIZE + 1})")
+                if len(extractions) >= db_batch_size:
+                    saved = save_extractions(supabase, extractions)
+                    total_extracted += saved
+                    extractions = []
+
+            if extractions:
+                saved = save_extractions(supabase, extractions)
+                total_extracted += saved
+
+            worker_label = f"worker {worker_id}" if worker_id is not None else "worker"
+            logger.info(
+                f"Saved batch extractions ({worker_label}, batch {i // BATCH_SIZE + 1})"
+            )
 
         except Exception as e:
             logger.error(f"Batch extraction failed: {e}")
             continue
 
     return total_extracted
+
+
+def extract_documents(
+    limit: int | None = None,
+    date: str | None = None,
+    include_processed: bool = False,
+    workers: int = 1,
+    db_batch_size: int = DB_BATCH_SIZE,
+) -> int:
+    """Main extraction pipeline."""
+    supabase = get_supabase_client()
+
+    # Fetch unprocessed docs
+    docs = fetch_unprocessed_documents(
+        supabase,
+        limit=limit,
+        date=date,
+        include_processed=include_processed,
+    )
+    if not docs:
+        logger.info("No unprocessed documents found")
+        return 0
+
+    logger.info(f"Found {len(docs)} unprocessed documents")
+
+    if workers <= 1:
+        return process_documents(docs, db_batch_size=db_batch_size)
+
+    shards = [docs[i::workers] for i in range(workers)]
+    processes: list[Process] = []
+    for idx, shard in enumerate(shards):
+        if not shard:
+            continue
+        process = Process(
+            target=process_documents,
+            args=(shard, idx + 1, db_batch_size),
+        )
+        process.start()
+        processes.append(process)
+
+    for process in processes:
+        process.join()
+
+    return len(docs)
 
 
 def main():
@@ -327,6 +371,18 @@ def main():
     )
     parser.add_argument(
         "--yesterday", action="store_true", help="Process yesterday's documents"
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of parallel workers to use",
+    )
+    parser.add_argument(
+        "--db-batch-size",
+        type=int,
+        default=DB_BATCH_SIZE,
+        help="How many extractions to write per upsert",
     )
     parser.add_argument(
         "--rerun",
@@ -345,6 +401,8 @@ def main():
         limit=args.limit,
         date=date,
         include_processed=args.rerun,
+        workers=args.workers,
+        db_batch_size=args.db_batch_size,
     )
     elapsed = time.perf_counter() - start_time
     logger.info(
