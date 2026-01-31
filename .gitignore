@@ -1,0 +1,24 @@
+# Data
+data/
+*.db
+
+# Python
+__pycache__/
+.venv/
+*.pyc
+.python-version
+
+# uv
+uv.lock
+
+# Logs
+*.log
+
+# Exports
+exports/
+
+# IDE
+.idea/
+.vscode/
+
+.env

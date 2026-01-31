@@ -1,0 +1,2 @@
+# Supabase integration for fufx
+
