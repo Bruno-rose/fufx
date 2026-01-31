@@ -1,6 +1,7 @@
 # pip install firecrawl-py
 
 from enum import Enum
+import time
 
 from firecrawl import Firecrawl
 from pydantic import BaseModel
@@ -29,14 +30,17 @@ class StructuredOutput(BaseModel):
     summary: str
 
 # Scrape a website:
+start_time = time.perf_counter()
 doc = firecrawl.scrape("https://www.govinfo.gov/content/pkg/FR-2026-01-29/html/2026-01817.htm", 
 formats=[{
       "type": "json",
       "schema": StructuredOutput.model_json_schema(),
-      "prompt": """Provide a structured output. The goal is to gain insights for companies on impact for their businesses.
+      "prompt": """Analyze the provided document to extract high-value business insights, identifying all mentioned companies, stakeholders, and specific regulatory or market-driven deadlines. Provide a structured summary using bold bullet points that details main impacts on models, rephrase so that the summary is understandable by business audience.
       """
     }],)
+elapsed = time.perf_counter() - start_time
 print(doc)
+print(f"Request took {elapsed:.2f}s")
 
 
 
