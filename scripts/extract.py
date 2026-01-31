@@ -13,6 +13,7 @@ Usage:
 import json
 import os
 import logging
+import time
 from datetime import datetime, timedelta
 from enum import Enum
 
@@ -53,9 +54,12 @@ class Sector(str, Enum):
     HEALTHCARE = "healthcare"
     FINANCE = "finance"
     TECH = "tech"
+    AEROSPACE = "aerospace"
+    AGRICULTURE = "agriculture"
+    EDUCATION = "education"
+    ENVIRONMENT = "environment"
     ENERGY = "energy"
     MANUFACTURING = "manufacturing"
-    RETAIL = "retail"
     OTHER = "other"
 
 
@@ -73,7 +77,7 @@ class StructuredOutput(BaseModel):
     summary: str
 
 
-EXTRACTION_PROMPT = """Analyze the provided document to extract high-value business insights, identifying all mentioned companies, stakeholders, and specific regulatory or market-driven deadlines. Provide a structured summary using bold bullet points that details main impacts on models, rephrase so that the summary is understandable by business audience."""
+EXTRACTION_PROMPT = """Analyze the provided document to extract high-value business insights, identifying all mentioned companies, stakeholders, and specific regulatory or market-driven deadlines. Provide a structured summary using bold bullet points that details main impacts on models, rephrase so that the summary is understandable by business audience. Make sure to rephrase the title to make it informative for business audience (product, service, regulation change, etc.). Make sure that the companies mentioned are companies and not countries/public organizations."""
 
 
 def get_supabase_client() -> Client:
@@ -97,6 +101,7 @@ def fetch_unprocessed_documents(
     supabase: Client,
     limit: int | None = None,
     date: str | None = None,
+    include_processed: bool = False,
 ) -> list[dict]:
     """Fetch documents that haven't been extracted yet."""
     # Left join to find documents without extractions
@@ -119,6 +124,9 @@ def fetch_unprocessed_documents(
 
     if not docs:
         return []
+
+    if include_processed:
+        return docs
 
     # Get existing extraction document_ids
     doc_ids = [d["id"] for d in docs]
@@ -176,13 +184,19 @@ def save_extractions(
 def extract_documents(
     limit: int | None = None,
     date: str | None = None,
+    include_processed: bool = False,
 ) -> int:
     """Main extraction pipeline."""
     supabase = get_supabase_client()
     firecrawl = get_firecrawl_client()
 
     # Fetch unprocessed docs
-    docs = fetch_unprocessed_documents(supabase, limit=limit, date=date)
+    docs = fetch_unprocessed_documents(
+        supabase,
+        limit=limit,
+        date=date,
+        include_processed=include_processed,
+    )
     if not docs:
         logger.info("No unprocessed documents found")
         return 0
@@ -311,6 +325,11 @@ def main():
     parser.add_argument(
         "--yesterday", action="store_true", help="Process yesterday's documents"
     )
+    parser.add_argument(
+        "--rerun",
+        action="store_true",
+        help="Re-extract documents even if they already have extractions",
+    )
 
     args = parser.parse_args()
 
@@ -318,8 +337,16 @@ def main():
     if args.yesterday:
         date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
-    count = extract_documents(limit=args.limit, date=date)
-    logger.info(f"Extraction complete. Processed {count} documents.")
+    start_time = time.perf_counter()
+    count = extract_documents(
+        limit=args.limit,
+        date=date,
+        include_processed=args.rerun,
+    )
+    elapsed = time.perf_counter() - start_time
+    logger.info(
+        f"Extraction complete. Processed {count} documents in {elapsed:.2f}s."
+    )
 
 
 if __name__ == "__main__":
