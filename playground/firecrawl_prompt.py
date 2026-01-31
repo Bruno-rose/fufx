@@ -37,7 +37,7 @@ class StructuredOutput(BaseModel):
     title: str
     companies_mentioned: list[str]
     sector: list[Sector]
-    relevance: list[Relevance]
+    relevance: Relevance
     summary: str
 
 def scrape_govinfo_example():
