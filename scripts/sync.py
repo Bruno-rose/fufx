@@ -2,9 +2,9 @@
 Sync crawled documents to Supabase.
 
 Usage:
-    uv run python -m supabase.sync --date 2026-01-30
-    uv run python -m supabase.sync --yesterday
-    uv run python -m supabase.sync --sync-only
+    uv run python scripts/sync.py --date 2026-01-30
+    uv run python scripts/sync.py --yesterday
+    uv run python scripts/sync.py --sync-only
 """
 
 import os
@@ -29,10 +29,19 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def sanitize_text(s: str | None) -> str | None:
+    """Remove null bytes that Postgres can't handle."""
+    if s is None:
+        return None
+    return s.replace("\x00", "")
+
+
 def get_supabase_client() -> Client:
     """Get Supabase client from environment variables."""
     url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY")
+    key = os.environ.get("SUPABASE_KEY") or os.environ.get(
+        "SUPABASE_SERVICE_ROLE_API_KEY"
+    )
 
     if not url or not key:
         raise ValueError("SUPABASE_URL and SUPABASE_KEY environment variables required")
@@ -55,14 +64,14 @@ def sync_to_supabase(
             {
                 "package_id": doc["package_id"],
                 "granule_id": doc["granule_id"],
-                "title": doc["title"],
+                "title": sanitize_text(doc["title"]),
                 "doc_class": doc["doc_class"],
                 "publish_date": doc["publish_date"],
-                "metadata": doc["metadata"],
+                "metadata": sanitize_text(doc["metadata"]),
                 "pdf_url": doc["pdf_url"],
                 "html_url": doc["html_url"],
                 "details_url": doc["details_url"],
-                "summary": doc["summary"],
+                "summary": sanitize_text(doc["summary"]),
                 "crawled_at": doc["crawled_at"],
             }
             for doc in batch
