@@ -347,9 +347,7 @@ def main():
         include_processed=args.rerun,
     )
     elapsed = time.perf_counter() - start_time
-    logger.info(
-        f"Extraction complete. Processed {count} documents in {elapsed:.2f}s."
-    )
+    logger.info(f"Extraction complete. Processed {count} documents in {elapsed:.2f}s.")
 
 
 if __name__ == "__main__":
