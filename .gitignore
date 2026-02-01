@@ -9,7 +9,7 @@ __pycache__/
 .python-version
 
 # uv
-uv.lock
+# uv.lock
 
 # Logs
 *.log
