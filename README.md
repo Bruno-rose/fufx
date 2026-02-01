@@ -1,6 +1,23 @@
-# fufx - GovInfo Document Crawler
+# Congress Signal
 
-Daily crawler for govinfo.gov with Supabase sync.
+Daily crawler for [govinfo.gov](https://www.govinfo.gov/app/search/%7B%22query%22%3A%22publishdate%3Arange(2026-01-30%2C2026-01-31)%22%2C%22offset%22%3A0%2C%22facets%22%3A%7B%7D%2C%22filterOrder%22%3A%5B%5D%2C%22facetToExpand%22%3A%22companiesnav%22%7D) with Supabase sync. Powered by Firecrawl, Supabase, an Resend.
+
+
+see our website: https://spontaneous-truffle-3ff463.netlify.app/
+
+<img width="3394" height="1948" alt="image" src="https://github.com/user-attachments/assets/1f5c9e12-866d-4c31-829a-4855a1cdfd04" />
+
+Email business digest based on company filters and interests
+
+<img width="440" height="485" alt="image" src="https://github.com/user-attachments/assets/b8ffd5c5-64b1-40dc-853c-1b7ccfdf034f" />
+
+<img width="2148" height="1626" alt="image" src="https://github.com/user-attachments/assets/eb002e0d-c572-4eb5-aa3a-ea6193c6f7e2" />
+
+
+
+
+
+
 
 ## Setup
 
