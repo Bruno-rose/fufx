@@ -8,6 +8,8 @@ Usage:
     uv run python scripts/extract.py
     uv run python scripts/extract.py --limit 100
     uv run python scripts/extract.py --date 2026-01-30
+
+uv run python scripts/extract.py --limit 2000 --workers 2 --db-batch-size 5 --poll-interval 15 --rate-limit-sleep 30 --max-retries 8
 """
 
 import json
@@ -48,8 +50,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Firecrawl limits
-BATCH_SIZE = 50  # firecrawl batch limit per request
+BATCH_SIZE = 4  # firecrawl batch size per request
 DB_BATCH_SIZE = 1  # write results in small batches
+RATE_LIMIT_SLEEP_SECONDS = 10
+MAX_BATCH_RETRIES = 3
+DEFAULT_POLL_INTERVAL = 5
 
 
 class Sector(str, Enum):
@@ -151,23 +156,37 @@ def fetch_unprocessed_documents(
 def run_batch_extraction(
     firecrawl: Firecrawl,
     urls: list[str],
+    poll_interval: int = DEFAULT_POLL_INTERVAL,
+    rate_limit_sleep: int = RATE_LIMIT_SLEEP_SECONDS,
+    max_retries: int = MAX_BATCH_RETRIES,
 ) -> dict:
     """Run firecrawl batch scrape with structured extraction."""
     logger.info(f"Starting batch extraction for {len(urls)} URLs...")
 
-    result = firecrawl.batch_scrape(
-        urls,
-        formats=[
-            {
-                "type": "json",
-                "schema": StructuredOutput.model_json_schema(),
-                "prompt": EXTRACTION_PROMPT,
-            }
-        ],
-        poll_interval=5,
-    )
+    for attempt in range(1, max_retries + 1):
+        try:
+            result = firecrawl.batch_scrape(
+                urls,
+                formats=[
+                    {
+                        "type": "json",
+                        "schema": StructuredOutput.model_json_schema(),
+                        "prompt": EXTRACTION_PROMPT,
+                    }
+                ],
+                poll_interval=poll_interval,
+            )
+            return result
+        except Exception as e:
+            message = str(e)
+            if "Rate Limit Exceeded" in message and attempt < max_retries:
+                logger.warning(
+                    f"Rate limit hit; sleeping {rate_limit_sleep}s before retry {attempt + 1}/{max_retries}"
+                )
+                time.sleep(rate_limit_sleep)
+                continue
+            raise
 
-    return result
 
 
 def save_extractions(
@@ -190,6 +209,9 @@ def process_documents(
     docs: list[dict],
     worker_id: int | None = None,
     db_batch_size: int = DB_BATCH_SIZE,
+    poll_interval: int = DEFAULT_POLL_INTERVAL,
+    rate_limit_sleep: int = RATE_LIMIT_SLEEP_SECONDS,
+    max_retries: int = MAX_BATCH_RETRIES,
 ) -> int:
     supabase = get_supabase_client()
     firecrawl = get_firecrawl_client()
@@ -202,7 +224,13 @@ def process_documents(
         url_to_doc = {d["html_url"]: d for d in batch}
 
         try:
-            result = run_batch_extraction(firecrawl, urls)
+            result = run_batch_extraction(
+                firecrawl,
+                urls,
+                poll_interval=poll_interval,
+                rate_limit_sleep=rate_limit_sleep,
+                max_retries=max_retries,
+            )
 
             if result.status != "completed":
                 logger.error(f"Batch failed with status: {result.status}")
@@ -323,6 +351,9 @@ def extract_documents(
     include_processed: bool = False,
     workers: int = 1,
     db_batch_size: int = DB_BATCH_SIZE,
+    poll_interval: int = DEFAULT_POLL_INTERVAL,
+    rate_limit_sleep: int = RATE_LIMIT_SLEEP_SECONDS,
+    max_retries: int = MAX_BATCH_RETRIES,
 ) -> int:
     """Main extraction pipeline."""
     supabase = get_supabase_client()
@@ -341,7 +372,13 @@ def extract_documents(
     logger.info(f"Found {len(docs)} unprocessed documents")
 
     if workers <= 1:
-        return process_documents(docs, db_batch_size=db_batch_size)
+        return process_documents(
+            docs,
+            db_batch_size=db_batch_size,
+            poll_interval=poll_interval,
+            rate_limit_sleep=rate_limit_sleep,
+            max_retries=max_retries,
+        )
 
     shards = [docs[i::workers] for i in range(workers)]
     processes: list[Process] = []
@@ -350,7 +387,14 @@ def extract_documents(
             continue
         process = Process(
             target=process_documents,
-            args=(shard, idx + 1, db_batch_size),
+            args=(
+                shard,
+                idx + 1,
+                db_batch_size,
+                poll_interval,
+                rate_limit_sleep,
+                max_retries,
+            ),
         )
         process.start()
         processes.append(process)
@@ -385,6 +429,24 @@ def main():
         help="How many extractions to write per upsert",
     )
     parser.add_argument(
+        "--poll-interval",
+        type=int,
+        default=DEFAULT_POLL_INTERVAL,
+        help="Seconds between Firecrawl batch status polls",
+    )
+    parser.add_argument(
+        "--rate-limit-sleep",
+        type=int,
+        default=RATE_LIMIT_SLEEP_SECONDS,
+        help="Seconds to wait before retrying after rate limit",
+    )
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=MAX_BATCH_RETRIES,
+        help="Max retries for Firecrawl batch requests",
+    )
+    parser.add_argument(
         "--rerun",
         action="store_true",
         help="Re-extract documents even if they already have extractions",
@@ -403,6 +465,9 @@ def main():
         include_processed=args.rerun,
         workers=args.workers,
         db_batch_size=args.db_batch_size,
+        poll_interval=args.poll_interval,
+        rate_limit_sleep=args.rate_limit_sleep,
+        max_retries=args.max_retries,
     )
     elapsed = time.perf_counter() - start_time
     logger.info(

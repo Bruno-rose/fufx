@@ -58,10 +58,30 @@ def scrape_govinfo_example():
             {
                 "type": "json",
                 "schema": StructuredOutput.model_json_schema(),
-                "prompt": """Analyze the provided document to extract key business insights, including:
-- All mentioned companies, stakeholders, and relevant regulatory or market deadlines.
-- A clear, structured summary with bold bullet points outlining the main new policies, grouped by sector.
-Rephrase the summary so it's easily understandable for a business audience. Also, rephrase the title to clearly reflect the nature of the document (e.g., product update, service change, regulation shift).""",
+                "prompt": """Analyze the provided document and produce a structured business summary with the following outputs:
+
+1. **Title**
+   - Rephrase the title to clearly describe the business nature of the document (e.g., regulation change, policy update, product launch, market rule change).
+
+2. **Companies Mentioned**
+   - List all explicitly named companies or organizations.
+
+3. **Sector Classification**
+   - Assign one or more sectors based on the PRIMARY business activities directly impacted by the document.
+
+4. **Business Relevance**
+   - Classify relevance based on **expected business impact**, not general interest:
+     - HIGH: direct regulatory, financial, or operational impact; requires action or decision
+     - MEDIUM: indirect impact, emerging trend, or strategic importance
+     - LOW: informational or minimal business impact
+
+5. **Summary**
+   - Provide a concise, business-friendly summary using **bold bullet points**.
+   - Group key policies or changes by sector.
+   - Clearly state any regulatory or market-driven deadlines.
+   - Focus on implications for businesses rather than legal or technical detail.
+
+Be precise, conservative, and consistent when assigning sector and relevance.""",
             }
         ],
     )
