@@ -133,10 +133,9 @@ def render_pro_email_html(
 
         items_html += f"""
         <div style="margin-bottom: 28px; padding: 20px; background: #fafbfc; border-left: 4px solid #1a73e8; border-radius: 0 8px 8px 0;">
-            <h3 style="margin: 0 0 12px 0; font-size: 18px;">
-                <a href="{url}" style="color: #1a73e8; text-decoration: none;">{title}</a>
-            </h3>
+            <h3 style="margin: 0 0 12px 0; font-size: 18px; color: #1a1a1a;">{title}</h3>
             <div style="color: #333; font-size: 14px; line-height: 1.6;">{md_to_email_html(ext.get('summary', ''))}</div>
+            <a href="{url}" style="display: inline-block; margin-top: 12px; padding: 8px 16px; background: #1a73e8; color: #fff; text-decoration: none; border-radius: 6px; font-size: 13px; font-weight: 500;">View Document →</a>
         </div>
         """
 
@@ -251,11 +250,11 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Send pro digest emails")
+    parser.add_argument("--date", help="Period date (YYYY-MM-DD), defaults to today")
     parser.add_argument(
-        "--date", help="Period date (YYYY-MM-DD), defaults to today"
-    )
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Don't actually send emails or mark as sent"
+        "--dry-run",
+        action="store_true",
+        help="Don't actually send emails or mark as sent",
     )
 
     args = parser.parse_args()
@@ -268,4 +267,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
